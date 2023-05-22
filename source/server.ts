@@ -1,15 +1,21 @@
 import http from 'http'
 import express, { Express } from 'express'
-const router: Express = express()
 import routes from './routes/enpoints'
 import DBManager from "./db"
+
+const router: Express = express()
 const db = new DBManager()
+
 db.init()
-/** Parse the request */
-router.use(express.urlencoded({ extended: false }))
-/** Takes care of JSON data */
+router.use(express.urlencoded({extended: true}))
 router.use(express.json())
-/** Routes */
+router.use(express.raw(
+  {
+    inflate: true,
+    limit: '50mb',
+    type: () => true
+  }
+))
 router.use('/', routes)
 
 /** Server */

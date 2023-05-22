@@ -2,7 +2,7 @@ import sqlite3 from 'sqlite3'
 sqlite3.verbose()
 
 export default class DBManager {
-  db: sqlite3.Database
+  db: any
   constructor() {
     // Open a SQLite database, stored in the file db.sqlite
     const db = new sqlite3.Database('/tmp/db.sqlite')
@@ -29,14 +29,32 @@ export default class DBManager {
       FOREIGN KEY(bucket_id) REFERENCES bucket(id)
     );`
     this.db.run(bucket)
-    return this.db.run(object)
+    this.db.run(object)
   }
-  async insert(query: string) {
-    return this.db.exec(query)
+  async execute(query: string) {
+    await this.db.exec(query)
   }
-
-  async select(query: string) {
-
+  async get(query: string) {
+    return await new Promise((resolve, reject) => {
+      this.db.serialize(()=>{
+          this.db.get(query, (err: any, rows: any) => {
+              if (err)
+                  reject(err)
+              resolve(rows)
+          })
+      });
+    })
+  }
+  async all(query: string) {
+    return await new Promise((resolve, reject) => {
+      this.db.serialize(()=>{
+          this.db.all(query, (err: any, rows: any) => {
+              if (err)
+                  reject(err)
+              resolve(rows)
+          })
+      });
+    })
   }
 }
 
