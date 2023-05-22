@@ -47,9 +47,9 @@ const putObject = async (request: any, response: any, next: any) => {
    * @returns
    */
   // TODO: manage subfolder hierarchy?
+  console.log('---INCOMING REQUEST---', request)
   console.log(`---PUT OBJECT ON ${request.params.bucket}---`)
   console.log('---INCOMING PARAMS REQUEST---', request.params)
-  console.log('---INCOMING REQUEST---', request)
   let ETag: any
   try {
     const path = `/tmp/${request.params.bucket}/${request.params.folder}`
@@ -64,7 +64,8 @@ const putObject = async (request: any, response: any, next: any) => {
 
     const insert = `
       INSERT INTO object (bucket_id, path)
-      VALUES ('${bucketId['id']}', '${request.params.folder}/${request.params.key}');`
+      VALUES ('${bucketId['id']}', '${request.params.folder}/${request.params.key}')
+      ON CONFLICT(bucket_id, path) DO UPDATE SET sys_update = current_timestamp;`
 
     await database.execute(insert)
     const filePath = `/tmp/${request.params.bucket}/${request.params.folder}/${request.params.key}`
@@ -94,20 +95,56 @@ const getObject = async (request: any, response: any, next: any) => {
    */
   console.log(`---GET OBJECT FROM BUCKET ${request.params.bucket}---`)
   console.log('---INCOMING PARAMS REQUEST---', request.params)
-  try {
-    const path = `/tmp/${request.params.bucket}/${request.params.folder}`
+  console.log('---INCOMING RANGE REQUEST---', request.get('range'))
 
+  let objectData: any
+  let file: any
+  let ETag: any
+  const filePath = `/tmp/${request.params.bucket}/${request.params.folder}/${request.params.key}`
+  let start: any
+  let end: any
+  let chunks: any
+  const range = request.get('range')
+  try {
+    if(range) {
+      console.log('---RANGE---', range)
+      const rangeValues = ((range).split('=')[1]).split('-')
+      start = rangeValues[0]
+      end = rangeValues[1]
+      chunks = fs.createReadStream(filePath, { start: parseInt(start), end: parseInt(end) })
+      file = await readableToString(chunks)
+    } else (
+      file = fs.readFileSync(filePath)
+    )
+    console.log('---READ FILE---', file)
     const select = `
       SELECT id FROM bucket
-      WHERE location = ${request.params.bucket};`
+      WHERE location = '${request.params.bucket}';`
     const bucketId: any = await database.get(select)
-    const insert = `
-      INSERT INTO object (bucket_id, path)
-      VALUES ('${bucketId['id']}', '${request.params.key}');`
-    await database.execute(insert)
+    const selectObject = `SELECT * FROM object WHERE
+      path = '${request.params.folder}/${request.params.key}'
+      AND bucket_id = '${bucketId['id']}';`
+    objectData = await database.get(selectObject)
+    console.log('---OBJECT DATA---', objectData)
+    ETag = etag(file)
   } catch(err) {
     console.log('Error during object get', err)
   }
+  return await response.set(
+    {
+      'Last-Modified': objectData['sys_update'],
+      'Etag': ETag,
+      'Content-Range': range ? `${start}-${end}` : `0-${file.length}`,
+    }
+  ).status(200).send(file)
+}
+
+const readableToString = async (readable: any) => {
+  let result = ''
+  for await (const chunk of readable) {
+    result += chunk
+  }
+  return result
 }
 
 export default {

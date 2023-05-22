@@ -27,6 +27,7 @@ export default class DBManager {
       sys_create DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
       sys_update DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
       FOREIGN KEY(bucket_id) REFERENCES bucket(id)
+      UNIQUE(bucket_id, path)
     );`
     this.db.run(bucket)
     this.db.run(object)

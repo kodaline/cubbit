@@ -3,3 +3,4 @@
 - security checks on objects being put on the bucket
 - structured and standardized json responses
 - manage subrequest folder hierarchy
+- automatic tests
