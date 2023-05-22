@@ -1,0 +1,21 @@
+{
+  "name": "cubbit",
+  "version": "1.0.0",
+  "description": "A simple S3-compatible HTTP service",
+  "main": "source/server.ts",
+"scripts": {
+    "dev": "nodemon source/server.ts",
+    "build": "rm -rf build/ && prettier --write source/ && tsc"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kodaline/cubbit.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kodaline/cubbit/issues"
+  },
+  "homepage": "https://github.com/kodaline/cubbit#readme"
+}
