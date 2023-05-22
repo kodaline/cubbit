@@ -1,5 +1,5 @@
 export default interface getObjectInterface {
-  bucketName: string,
+  bucket: string,
   key: string,
   range?: string,
   region?: string

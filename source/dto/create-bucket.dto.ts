@@ -1,5 +1,5 @@
 export default interface createBucketInterface {
-  name: string,
+  bucket: string,
   region?: string
 }
   

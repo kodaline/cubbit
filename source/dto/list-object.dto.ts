@@ -1,5 +1,5 @@
 export default interface listObjectInterface {
-  bucketName: string,
+  bucket: string,
   region?: string,
   prefix?: string,
   maxKeys?: number

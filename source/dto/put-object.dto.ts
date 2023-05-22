@@ -1,6 +1,6 @@
 export default interface putObjectInterface {
-  bucketName: string,
+  bucket: string,
   key: string,
   body: Blob,
-  region?: string
+  region?: string,
 }
