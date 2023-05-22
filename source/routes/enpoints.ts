@@ -5,5 +5,6 @@ const router = express.Router()
 router.put('/:bucket', local.createBucket)
 router.put('/:bucket/:folder/:key', local.putObject)
 router.get('/:bucket/:folder/:key', local.getObject)
+router.get('/:bucket', local.listObjects)
 
 export = router

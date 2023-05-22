@@ -24,6 +24,10 @@ export default class DBManager {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bucket_id INTEGER NOT NULL,
       path VARCHAR(200) NOT NULL,
+      folder VARCHAR(200) NOT NULL,
+      key VARCHAR(200) NOT NULL,
+      etag VARCHAR(200) NOT NULL,
+      size INTEGER NOT NULL,
       sys_create DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
       sys_update DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
       FOREIGN KEY(bucket_id) REFERENCES bucket(id)

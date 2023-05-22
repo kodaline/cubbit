@@ -1,6 +1,12 @@
 #TODOS
 - DB server (mysql or any other DBMS)
 - security checks on objects being put on the bucket
+- use sql prepared statements
 - structured and standardized json responses
 - manage subrequest folder hierarchy
 - automatic tests
+- get multiple objects
+- api.ts testing and usage with aws sdk api
+- remove debug logs
+- xml templating
+- error messages of API based on client interpretation of the response

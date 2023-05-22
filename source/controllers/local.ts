@@ -2,9 +2,12 @@ const log = {
  debug: console.log,
  error: console.log
 }
+import helper from '../helpers/helper'
 import DBManager from "../db"
 const database = new DBManager()
 import fs from 'fs'
+import XmlDataInterface, { Content } from "../dto/xml-data.dto"
+import BucketError from '../errors/bucket.error'
 const etag = require('etag')
 const createBucket = async (request: any, response: any, next: any) => {
   /**
@@ -21,7 +24,6 @@ const createBucket = async (request: any, response: any, next: any) => {
       WHERE location = '${request.params.bucket}';`
 
     const exists = await database.get(select)
-    console.log('EXISTS', exists)
     if(exists) {
       console.log('Bucket already exists')
       return response.status(200).send()
@@ -29,7 +31,6 @@ const createBucket = async (request: any, response: any, next: any) => {
     const insert = `
       INSERT INTO bucket (location, description)
       VALUES ('${request.params.bucket}', 'test');`
-    console.log('INSERT', insert)
     const path = `/tmp/${request.params.bucket}`
     await fs.promises.mkdir(path, { recursive: true })
     await database.execute(insert)
@@ -51,11 +52,13 @@ const putObject = async (request: any, response: any, next: any) => {
   console.log(`---PUT OBJECT ON ${request.params.bucket}---`)
   console.log('---INCOMING PARAMS REQUEST---', request.params)
   let ETag: any
+  let size: any
   try {
     const path = `/tmp/${request.params.bucket}/${request.params.folder}`
     await fs.promises.mkdir(path, { recursive: true })
     console.log('---path---', path)
-
+    ETag = etag(request.body)
+    size = (request.body).length
     const select = `
       SELECT id FROM bucket
       WHERE location = '${request.params.bucket}';`
@@ -63,8 +66,8 @@ const putObject = async (request: any, response: any, next: any) => {
     console.log('BUCKET DATA', bucketId)
 
     const insert = `
-      INSERT INTO object (bucket_id, path)
-      VALUES ('${bucketId['id']}', '${request.params.folder}/${request.params.key}')
+      INSERT INTO object (bucket_id, path, etag, size)
+      VALUES ('${bucketId['id']}', '${request.params.folder}/${request.params.key}', '${ETag}', '${size}')
       ON CONFLICT(bucket_id, path) DO UPDATE SET sys_update = current_timestamp;`
 
     await database.execute(insert)
@@ -74,7 +77,6 @@ const putObject = async (request: any, response: any, next: any) => {
       console.log('...response...', response)
       fs.writeFileSync(filePath, request.body)
       // file written successfully
-      ETag = etag(request.body)
     } catch (err) {
       console.error(err)
       response.status(200).send()
@@ -106,21 +108,25 @@ const getObject = async (request: any, response: any, next: any) => {
   let chunks: any
   const range = request.get('range')
   try {
+    const select = `
+    SELECT id FROM bucket
+    WHERE location = '${request.params.bucket}';`
+
+  const bucketId: any = await database.get(select)
+  if(!bucketId) {
+    const message = `Bucket ${request.params.bucket} does not exist, please first create the bucket.`
+    return await response.send(message)
+  }
     if(range) {
       console.log('---RANGE---', range)
       const rangeValues = ((range).split('=')[1]).split('-')
       start = rangeValues[0]
       end = rangeValues[1]
       chunks = fs.createReadStream(filePath, { start: parseInt(start), end: parseInt(end) })
-      file = await readableToString(chunks)
+      file = await helper.readableToString(chunks)
     } else (
       file = fs.readFileSync(filePath)
     )
-    console.log('---READ FILE---', file)
-    const select = `
-      SELECT id FROM bucket
-      WHERE location = '${request.params.bucket}';`
-    const bucketId: any = await database.get(select)
     const selectObject = `SELECT * FROM object WHERE
       path = '${request.params.folder}/${request.params.key}'
       AND bucket_id = '${bucketId['id']}';`
@@ -139,16 +145,82 @@ const getObject = async (request: any, response: any, next: any) => {
   ).status(200).send(file)
 }
 
-const readableToString = async (readable: any) => {
-  let result = ''
-  for await (const chunk of readable) {
-    result += chunk
+const listObjects = async (request: any, response: any, next: any) => {
+  /**
+   * Get object from bucket.
+   * @param {string}  request - The request.
+   * @param {string} [response] - The response.
+   * @returns
+   */
+  console.log(`---LIST OBJECTS FROM BUCKET ${request.params.bucket}---`)
+  console.log('---INCOMING PARAMS REQUEST---', request.params)
+  console.log('---INCOMING MARKER REQUEST---', request.get('marker'))
+  console.log('---INCOMING MAX-KEYS REQUEST---', request.get('max-keys'))
+  console.log('---INCOMING PREFIX REQUEST---', request.get('prefix'))
+  const prefix = request.query.prefix
+  const marker = request.query.marker
+  const maxKeys = request.query['max-keys']
+  let objectData: any
+  let selectObjects: string
+  const filePath = `/tmp/${request.params.bucket}/${request.params.folder}/${request.params.key}`
+  try {
+    const select = `
+      SELECT id FROM bucket
+      WHERE location = '${request.params.bucket}';`
+    const bucketId: any = await database.get(select)
+    if(!bucketId) {
+      const message = `Bucket ${request.params.bucket} does not exist, please first create the bucket.`
+      return response.send(message)
+    }
+    selectObjects = `SELECT path, etag, size, sys_update
+      FROM object
+      WHERE bucket_id = '${bucketId['id']}'`
+
+    if(prefix) {
+      selectObjects += ` AND path LIKE '${prefix}/'`
+    }
+    if(marker) {
+      selectObjects += ` AND path >= '${marker}'` // TODO split folder and key into two sqlite object columns instead of path
+    }
+    if(maxKeys) {
+      selectObjects += ` LIMIT ${maxKeys}`
+    }
+
+    objectData = await database.all(selectObjects)
+    console.log('---OBJECT DATA---', objectData)
+  } catch(err) {
+    console.log('Error during object get', err)
   }
-  return result
+  let dataStruct: XmlDataInterface = {
+    name: request.params.bucket,
+    prefix: prefix ? prefix : '',
+    marker: marker ? marker : '',
+    maxKeys: maxKeys ? maxKeys : 1000,
+    truncated: false, // TODO get isTruncated value
+    contents: []
+  }
+  let contents: Array<Content> = []
+  objectData.forEach((elem: any) => {
+    const data = {
+      key: elem['path'].split('/')[1],
+      sysUpdate: elem[`sys_update`],
+      etag: elem['etag'],
+      size: elem['size']
+    }
+    contents.push(data)
+  })
+  dataStruct.contents = contents
+  console.log('---DATA STRUCT---', dataStruct)
+  const xmlStruct = await helper.buildXmlStructure(dataStruct)
+  console.log('---XML---\n', xmlStruct)
+  return await response.set('Content-Type', 'application/xml')
+    .set('Content-Length', xmlStruct.length)
+    .status(200).send(xmlStruct)
 }
 
 export default {
   createBucket,
   putObject,
-  getObject
+  getObject,
+  listObjects
 }
