@@ -1,10 +1,14 @@
 import AWS from 'aws-sdk'
+import createBucketInterface from '../dto/create-bucket.dto'
+import listObjectInterface from '../dto/list-object.dto'
+import putObjectInterface from '../dto/put-object.dto'
+import getObjectInterface from '../dto/get-object.dto'
 //const log = require('ee-log')
 const log = {
  debug: console.log,
  error: console.log
 }
-class S3ServiceController {
+export default class S3ServiceController {
   S3: any
   constructor() {
     AWS.config.update({
@@ -16,7 +20,7 @@ class S3ServiceController {
     this.S3 = new AWS.S3({ apiVersion: '2006-03-01' })
   }
 
-  async createBucket(name: string, region?: string) {
+  async createBucket({name, region} : createBucketInterface) {
     /**
      * Creates an aws bucket on a specific region. 
      * @param {string}  name - The name of the bucket.
@@ -39,7 +43,7 @@ class S3ServiceController {
         data: {
           success: false,
           message: 'bucket-already-exists',
-          data: result.$response.data
+          result: result
         }
       }
     }
@@ -50,7 +54,7 @@ class S3ServiceController {
         data: {
           success: true,
           message: 'bucket-created',
-          data: result.Location
+          result: result
         }
       }
     } catch (error) {
@@ -59,13 +63,13 @@ class S3ServiceController {
         data: {
           success: false,
           message: 'bucket-not-created',
-          data: error
+          error: error
         }
       }
     }
   }
 
-  async listObjects(bucketName: string, region?: string, prefix?: string, maxKeys?: number) {
+  async listObjects({bucketName, region, prefix, maxKeys} : listObjectInterface) {
     /**
      * Lists items of an aws bucket on a specific region. 
      * @param {string}  bucketName - The name of the bucket.
@@ -82,8 +86,7 @@ class S3ServiceController {
         MaxKeys: maxKeys ? maxKeys : 1000
       }
     }
-    const command = await this.S3.ListObjectsV2Command({ params })
-  
+    const result = await this.S3.listObjectsV2(params).promise()
     try {
       let isTruncated = true
       console.log('------------------------------------------\n')
@@ -93,18 +96,82 @@ class S3ServiceController {
       let contents = ''
   
       while (isTruncated) {
-        const { Contents, IsTruncated, NextContinuationToken } = await this.S3.send(command)
-        const contentsList = Contents.map((c: any) => ` - ${c.Key}`).join("\n")
+        const { Contents, IsTruncated, NextContinuationToken } = result
+        const contentsList = Contents?.map((c: any) => ` - ${c.Key}`).join("\n")
         contents += contentsList + "\n"
-        isTruncated = IsTruncated
-        command.input.ContinuationToken = NextContinuationToken
+        isTruncated ? isTruncated : false
+        result.ContinuationToken = NextContinuationToken
       }
       console.log(contents)
-  
+      return contents
     } catch (err) {
       console.error(err)
+      return {
+        data: {
+          success: false,
+          message: 'list-object-fail',
+          error: err
+        }
+      }
+    }
+  }
+
+  async putObject({bucketName, key, body, region} : putObjectInterface) {
+    const params = {
+      Bucket: bucketName,
+      Body: body, 
+      Key: key,
+      LocationConstraint: region ? region : '',
+    }
+    let result: any
+    try {
+      result = await this.S3.putObject(params).promise()
+      console.log(`Object put on bucket ${bucketName}\n`)
+      return {
+        data: {
+          success: true,
+          message: 'object-put',
+          result: result
+        }
+      }
+    } catch (error) {
+      console.log('Error: object not put\n', error)
+      return {
+        data: {
+          success: false,
+          message: 'object-not-put',
+          error: error
+        }
+      }
+    }
+  }
+
+  async getObject({bucketName, key, range, region} : getObjectInterface) {
+    const params = {
+      Bucket: bucketName,
+      Key: key,
+      Range: range ? range : ''
+    }
+    let result: any
+    try {
+      result = await this.S3.getObject(params).promise()
+      console.log(`Object retrieved from bucket ${bucketName}\n`)
+      return {
+        data: {
+          success: true,
+          message: 'object-retrieved',
+          result: result
+        }
+      }
+    } catch (error) {
+      console.log('Error: object not retrieved\n', error)
+      return {
+        data: {
+          success: false,
+          message: 'object-not-retrieved',
+          error: error
+        }
+      }
     }
   }
 }
-
-module.exports = S3ServiceController
