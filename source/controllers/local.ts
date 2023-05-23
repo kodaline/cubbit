@@ -7,8 +7,8 @@ import DBManager from "../db"
 const database = new DBManager()
 import fs from 'fs'
 import XmlDataInterface, { Content } from "../dto/xml-data.dto"
-import BucketError from '../errors/bucket.error'
 const etag = require('etag')
+
 const createBucket = async (request: any, response: any, next: any) => {
   /**
    * Creates an aws bucket. 
@@ -66,8 +66,13 @@ const putObject = async (request: any, response: any, next: any) => {
     console.log('BUCKET DATA', bucketId)
 
     const insert = `
-      INSERT INTO object (bucket_id, path, etag, size)
-      VALUES ('${bucketId['id']}', '${request.params.folder}/${request.params.key}', '${ETag}', '${size}')
+      INSERT INTO object (bucket_id, path, folder, key, etag, size)
+      VALUES ('${bucketId['id']}',
+              '${request.params.folder}/${request.params.key}',
+              '${request.params.folder}',
+              '${request.params.key}',
+              '${ETag}',
+              '${size}')
       ON CONFLICT(bucket_id, path) DO UPDATE SET sys_update = current_timestamp;`
 
     await database.execute(insert)
@@ -159,7 +164,9 @@ const listObjects = async (request: any, response: any, next: any) => {
   console.log('---INCOMING PREFIX REQUEST---', request.get('prefix'))
   const prefix = request.query.prefix
   const marker = request.query.marker
-  const maxKeys = request.query['max-keys']
+  const defaultMaxKeys = 1000
+  let totalObjects: any
+  const maxKeys = request.query['max-keys'] ? parseInt(request.query['max-keys']) : defaultMaxKeys
   let objectData: any
   let selectObjects: string
   const filePath = `/tmp/${request.params.bucket}/${request.params.folder}/${request.params.key}`
@@ -177,11 +184,13 @@ const listObjects = async (request: any, response: any, next: any) => {
       WHERE bucket_id = '${bucketId['id']}'`
 
     if(prefix) {
-      selectObjects += ` AND path LIKE '${prefix}/'`
+      selectObjects += ` AND folder = '${prefix.replace('/', '')}'`
     }
     if(marker) {
-      selectObjects += ` AND path >= '${marker}'` // TODO split folder and key into two sqlite object columns instead of path
+      selectObjects += ` AND key >= '${marker}'`
     }
+    totalObjects = await database.all(selectObjects)
+
     if(maxKeys) {
       selectObjects += ` LIMIT ${maxKeys}`
     }
@@ -190,13 +199,15 @@ const listObjects = async (request: any, response: any, next: any) => {
     console.log('---OBJECT DATA---', objectData)
   } catch(err) {
     console.log('Error during object get', err)
+    return
   }
+  const isTruncated = totalObjects.length > maxKeys
   let dataStruct: XmlDataInterface = {
     name: request.params.bucket,
     prefix: prefix ? prefix : '',
     marker: marker ? marker : '',
-    maxKeys: maxKeys ? maxKeys : 1000,
-    truncated: false, // TODO get isTruncated value
+    maxKeys: maxKeys,
+    truncated: isTruncated,
     contents: []
   }
   let contents: Array<Content> = []

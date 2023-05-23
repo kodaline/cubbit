@@ -21,5 +21,5 @@ router.use('/', routes)
 /** Server */
 const httpServer = http.createServer(router)
 const PORT: any = process.env.API_PORT ?? 8080
-const HOST: any = process.env.API_HOST ?? 'localhost'
+const HOST: any = process.env.API_HOST ?? '0.0.0.0'
 httpServer.listen(PORT, HOST, () => console.log(`The server is running on port ${PORT}`))
